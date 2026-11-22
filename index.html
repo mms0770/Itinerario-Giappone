@@ -85,6 +85,11 @@ h1{margin:0;font:700 clamp(32px,7vw,52px)/1.05 var(--display);letter-spacing:.01
 .plate.on .plate-area{color:inherit;opacity:.85}
 .plate.all{--c:var(--ink)}
 .plate.all.on{background:var(--ink);color:var(--bg)}
+.plate.today{--c:var(--accent)}
+.plate.today.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.today-view .daynav .btn.primary{font-weight:600}
+.bk{color:var(--ink)}
+.bk strong{font-weight:600;color:var(--accent)}
 
 /* griglia principale */
 .layout{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;margin-top:10px}
@@ -330,6 +335,8 @@ textarea{resize:vertical;min-height:70px}
       </div>
       <div class="field"><label for="f-slot">Fascia del giorno</label><select id="f-slot"></select></div>
       <div class="field"><label for="f-note">Note</label><textarea id="f-note"></textarea></div>
+      <div class="field"><label for="f-bk">Prenotazione (orario, persone, numero)</label><textarea id="f-bk" rows="2"></textarea></div>
+      <div class="field"><label for="f-bu">Link alla conferma</label><input id="f-bu" type="url" autocomplete="off" inputmode="url" placeholder="https://"></div>
       <div class="field" id="geoField">
         <label for="f-coord">Posizione sulla mappa</label>
         <div class="coordline">
@@ -460,12 +467,23 @@ var LS_KEY='giappone-itinerario-v2';
 var state=null;
 var pendingDone={};
 var saveTimer=null, saving=false, dirty=false, serverVersion=0, lastKnown=0, appShown=false, pw='';
-var ui={sel:'all',layers:{tappe:true,p:false,n:false,t:false,g:false},hideDone:false,edit:false,focus:null,editSlot:null,editTitle:false,pick:false,form:null};
+var ui={sel:'oggi',layers:{tappe:true,p:false,n:false,t:false,g:false},hideDone:false,edit:false,focus:null,editSlot:null,editTitle:false,pick:false,form:null};
 function clone(o){return JSON.parse(JSON.stringify(o))}
 function valid(s){return s&&Array.isArray(s.days)&&s.days.length>0&&s.days.every(function(d){return d&&Array.isArray(d.slots)})}
 
 function dayIndex(id){for(var i=0;i<state.days.length;i++)if(state.days[i].id===id)return i;return -1}
-function getDay(id){return state.days[dayIndex(id)]||null}
+function todayIso(){var n=new Date();return n.getFullYear()+'-'+pad(n.getMonth()+1)+'-'+pad(n.getDate())}
+/* Giorno «oggi»: quello che coincide con la data del telefono; prima del viaggio il primo, dopo il viaggio l'ultimo. */
+function todayId(){
+  var iso=todayIso();
+  var hit=state.days.filter(function(d){return d.date===iso})[0];
+  if(hit)return hit.id;
+  return iso<state.days[0].date?state.days[0].id:state.days[state.days.length-1].id;
+}
+function getDay(id){
+  if(id==='oggi')return state.days[dayIndex(todayId())]||null;
+  return state.days[dayIndex(id)]||null;
+}
 function hueOf(id){var i=dayIndex(id);return HUES[(i<0?0:i)%HUES.length]}
 function findStop(id){
   for(var i=0;i<state.days.length;i++){var d=state.days[i];
@@ -671,7 +689,9 @@ function renderHeader(){
 
 function renderRail(){
   var ap=allProg();
-  var h='<button type="button" class="plate all'+(ui.sel==='all'?' on':'')+'" data-day="all" aria-pressed="'+(ui.sel==='all')+'"><span class="plate-no">Tutti</span><span class="plate-date">'+state.days.length+' giorni</span><span class="plate-area">Panoramica</span>'+(ap.t?'<span class="plate-prog">'+ap.n+'/'+ap.t+'</span>':'')+'</button>';
+  var td=getDay('oggi');
+  var h='<button type="button" class="plate today'+(ui.sel==='oggi'?' on':'')+'" data-day="oggi" aria-pressed="'+(ui.sel==='oggi')+'"><span class="plate-no">Oggi</span><span class="plate-date">'+esc(td?fmtDate(td.date,{day:'numeric',month:'short'}):'')+'</span><span class="plate-area">'+esc(td?td.area:'')+'</span></button>';
+  h+='<button type="button" class="plate all'+(ui.sel==='all'?' on':'')+'" data-day="all" aria-pressed="'+(ui.sel==='all')+'"><span class="plate-no">Tutti</span><span class="plate-date">'+state.days.length+' giorni</span><span class="plate-area">Panoramica</span>'+(ap.t?'<span class="plate-prog">'+ap.n+'/'+ap.t+'</span>':'')+'</button>';
   state.days.forEach(function(d,i){
     var on=ui.sel===d.id,p=dayProg(d),full=p.t&&p.n===p.t;
     h+='<button type="button" class="plate dc'+(on?' on':'')+(full?' full':'')+'" style="--h:'+HUES[i%HUES.length]+'" data-day="'+d.id+'" aria-pressed="'+on+'"'+(ui.edit?' draggable="true"':'')+'><span class="plate-no">'+pad(i+1)+'</span><span class="plate-date">'+esc(fmtDate(d.date,{day:'numeric',month:'short'}))+'</span><span class="plate-area">'+esc(d.area)+'</span>'+(p.t?'<span class="plate-prog">'+(full?'✓ ':'')+p.n+'/'+p.t+'</span>':'')+'</button>';
@@ -705,7 +725,7 @@ function modeSwatch(mode){return '<svg class="sw" viewBox="0 0 46 12" width="46"
 
 function renderList(){
   var el=$('#list');
-  el.innerHTML=ui.sel==='all'?listAll():listDay(getDay(ui.sel)||state.days[0]);
+  el.innerHTML=ui.sel==='all'?listAll():(ui.sel==='oggi'?listToday():listDay(getDay(ui.sel)||state.days[0]));
 }
 
 function listAll(){
@@ -716,6 +736,27 @@ function listAll(){
     h+='<button type="button" class="ov dc" style="--h:'+HUES[i%HUES.length]+'" data-day="'+d.id+'"><span class="ov-no">'+pad(i+1)+'</span><span class="ov-date">'+esc(fmtDate(d.date,{weekday:'short',day:'numeric',month:'short'}))+'</span><span class="ov-body"><h3>'+esc(d.title)+'</h3><p>'+esc(names.join(' · '))+'</p><div class="ov-meta">'+places+' luoghi · '+stamps+' timbri · '+esc(d.area)+(pr.t?' · '+pr.n+'/'+pr.t+' fatte':'')+'</div></span></button>';
   });
   return h+'</div><div class="addrow edit-only"><button type="button" class="btn" data-act="add-day">+ Aggiungi giorno</button></div>';
+}
+
+/* Vista Oggi: le tappe del giorno, con percorso e spunte; niente navigazione tra giorni. */
+function listToday(){
+  var d=getDay('oggi'),i=dayIndex(d.id),nums=numbering(d),hue=HUES[i%HUES.length],pr=dayProg(d);
+  var inTrip=d.date===todayIso();
+  var route=gmapsDay(d),routeTodo=gmapsDay(d,true);
+  var h='<div class="dc today-view" style="--h:'+hue+'"><div class="dayhead"><span class="dayno">'+(inTrip?'Oggi · Giorno '+(i+1):'Giorno '+(i+1)+' · primo del viaggio')+'</span>';
+  h+='<h2>'+esc(d.title)+'</h2><p class="daydate">'+esc(fmtDate(d.date,{weekday:'long',day:'numeric',month:'long'}))+' · '+esc(d.area)+'</p>';
+  if(!inTrip)h+='<p class="hint">Oggi non cade nei giorni del viaggio: ti mostro '+(todayIso()<d.date?'il primo giorno':'l\'ultimo giorno')+'.</p>';
+  if(pr.t)h+='<div class="prog"><div class="bar"><i style="width:'+Math.round(pr.n*100/pr.t)+'%"></i></div><span>'+pr.n+' su '+pr.t+' fatte</span></div>';
+  h+='<div class="daynav">'+(route?'<a class="btn primary gm" href="'+route+'" target="_blank" rel="noopener">Percorso di oggi su Google Maps</a>':'')+(routeTodo&&routeTodo!==route?'<a class="btn gm" href="'+routeTodo+'" target="_blank" rel="noopener">Solo le tappe da fare</a>':'')+'</div>';
+  h+='<div class="daynav"><button type="button" class="btn small" data-day="'+d.id+'">Apri il giorno intero</button><button type="button" class="btn small" data-day="all">Tutti i giorni</button></div></div>';
+  d.slots.forEach(function(sl){
+    h+='<section class="slot" data-slot="'+sl.id+'"><div class="slot-h"><h3>'+esc(sl.name)+'</h3><span class="time">'+esc(sl.time)+'</span></div>';
+    if(sl.mezzi)h+='<div class="mezzi"><span class="lbl">Mezzi</span><span>'+esc(sl.mezzi)+'</span></div>';
+    h+='<ul class="stops">';
+    sl.stops.forEach(function(s,k){if(!(ui.hideDone&&s.done))h+=stopRow(d,sl,s,k,sl.stops.length,nums)});
+    h+='</ul></section>';
+  });
+  return h+'</div>';
 }
 
 function stopRow(d,sl,s,idx,total,nums){
@@ -729,6 +770,7 @@ function stopRow(d,sl,s,idx,total,nums){
   var h='<li class="stop dc'+(focus?' focus':'')+(done?' done':'')+'" style="--h:'+hueOf(d.id)+'" data-stop="'+s.id+'" tabindex="0"'+(ui.edit?' draggable="true"':'')+'>'+badge+'<div style="min-width:0"><div class="stop-top"><h4>'+esc(s.n)+'</h4><span class="tag '+s.c+'">'+esc(mv?modeLabel(s.mode):CATS[s.c])+'</span>'+(mv&&s.ov?'<span class="tag t">Notturno</span>':'')+'</div>';
   if(mv)h+='<p class="note">'+modeSwatch(s.mode)+esc(s.dur||'')+'</p>';
   if(s.t)h+='<p class="note">'+esc(s.t)+'</p>';
+  if(s.bk)h+='<p class="note bk"><strong>Prenotazione</strong> '+esc(s.bk)+(s.bu?' · <a href="'+esc(s.bu)+'" target="_blank" rel="noopener">Apri la conferma</a>':'')+'</p>';
   h+='<div class="stop-actions">';
   if(mv){var mu=gmapsMove(s);if(mu)h+='<a href="'+mu+'" target="_blank" rel="noopener">Indicazioni su Google Maps</a>'}
   else h+='<a href="'+gmapsStop(s)+'" target="_blank" rel="noopener">Google Maps</a>';
@@ -1004,7 +1046,7 @@ function selectDay(id,o){
   o=o||{};
   ui.sel=id;ui.editSlot=null;ui.editTitle=false;
   ui.focus=o.keepFocus||null;
-  setHash(id==='all'?'tutti':'g'+(dayIndex(id)+1));
+  setHash(id==='all'?'tutti':(id==='oggi'?'oggi':'g'+(dayIndex(id)+1)));
   render();
   if(o.keepFocus){var f=findStop(o.keepFocus.stop);if(f&&hasGeo(f.stop)){fitCurrent(false);flyTo({lon:f.stop.lng,lat:f.stop.lat,k:Math.max(view.k,5000)},true);scrollToStop(f.stop.id)}else fitCurrent(true)}
   else{fitCurrent(true);if(!o.noScroll){var t=$('#rail').getBoundingClientRect().top+window.scrollY-8;if(window.scrollY>t)window.scrollTo({top:Math.max(0,t),behavior:'smooth'})}}
@@ -1028,7 +1070,7 @@ window.addEventListener('hashchange',function(){applyHash(true)});
 function applyHash(rerender){
   if(!state)return;
   var h=(location.hash||'').replace('#',''),m=h.match(/^g(\d+)$/);
-  var target=h==='tutti'?'all':(m&&state.days[+m[1]-1]?state.days[+m[1]-1].id:null);
+  var target=h==='tutti'?'all':(h==='oggi'?'oggi':(m&&state.days[+m[1]-1]?state.days[+m[1]-1].id:null));
   if(target&&target!==ui.sel){ui.sel=target;ui.focus=null;if(rerender){render();fitCurrent(true)}}
 }
 
@@ -1174,6 +1216,7 @@ function openForm(o,pickNow){
   $('#sheetTitle').textContent=o.mode==='edit'?'Modifica tappa':'Nuova tappa';
   $('#f-name').value=f?f.stop.n:'';
   $('#f-note').value=f?f.stop.t:'';
+  $('#f-bk').value=f&&f.stop.bk||'';$('#f-bu').value=f&&f.stop.bu||'';
   $('#f-mode').innerHTML=MODES.map(function(m){return '<option value="'+m[0]+'"'+((f&&f.stop.mode?f.stop.mode:'train')===m[0]?' selected':'')+'>'+m[1]+'</option>'}).join('');
   $('#f-from').value=f&&f.stop.from||'';$('#f-to').value=f&&f.stop.to||'';$('#f-dur').value=f&&f.stop.dur||'';$('#f-ov').checked=!!(f&&f.stop.ov);
   $('#f-cat').innerHTML=Object.keys(CATS).map(function(k){return '<option value="'+k+'"'+(f&&f.stop.c===k?' selected':'')+'>'+CATS[k]+'</option>'}).join('');
@@ -1234,10 +1277,11 @@ $('#f-delete').addEventListener('click',function(){
   f.slot.stops.splice(f.index,1);if(ui.focus&&ui.focus.stop===fm.stopId)ui.focus=null;
   closeForm();commit();
 });
+function setBk(st,b,u){if(b)st.bk=b;else delete st.bk;if(u)st.bu=u;else delete st.bu}
 $('#stopForm').addEventListener('submit',function(e){
   e.preventDefault();
   var fm=ui.form,c=$('#f-cat').value,dayId=$('#f-day').value,slotId=$('#f-slot').value,note=$('#f-note').value.trim();
-  var name=$('#f-name').value.trim(),mvd=null;
+  var name=$('#f-name').value.trim(),mvd=null,bkv=$('#f-bk').value.trim(),buv=$('#f-bu').value.trim();
   if(c==='m'){
     mvd={mode:$('#f-mode').value,from:$('#f-from').value.trim(),to:$('#f-to').value.trim(),dur:$('#f-dur').value.trim(),ov:$('#f-ov').checked};
     name=mvRoute(mvd)||modeLabel(mvd.mode);
@@ -1252,11 +1296,11 @@ $('#stopForm').addEventListener('submit',function(e){
   if(fm.mode==='edit'){
     var f=findStop(fm.stopId);
     if(f){
-      f.stop.n=name;f.stop.c=c;f.stop.t=note;f.stop.lat=lat;f.stop.lng=lng;applyMv(f.stop);
+      f.stop.n=name;f.stop.c=c;f.stop.t=note;f.stop.lat=lat;f.stop.lng=lng;applyMv(f.stop);setBk(f.stop,bkv,buv);
       if(f.day.id!==d.id||f.slot.id!==sl.id){f.slot.stops.splice(f.index,1);sl.stops.push(f.stop)}
     }
   }else{
-    var ns={id:uid(),c:c,n:name,t:note,lat:lat,lng:lng};applyMv(ns);sl.stops.push(ns);
+    var ns={id:uid(),c:c,n:name,t:note,lat:lat,lng:lng};applyMv(ns);setBk(ns,bkv,buv);sl.stops.push(ns);
     ui.focus={day:d.id,stop:ns.id};
   }
   var go=d.id;
@@ -1349,19 +1393,19 @@ $('#list').addEventListener('drop',function(e){
 });
 $('#rail').addEventListener('dragstart',function(e){
   var b=e.target.closest&&e.target.closest('.plate');
-  if(!b||!ui.edit||b.getAttribute('data-day')==='all')return;
+  if(!b||!ui.edit||['all','oggi'].indexOf(b.getAttribute('data-day'))>=0)return;
   dragDayId=b.getAttribute('data-day');
   try{e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',dragDayId)}catch(_){}
 });
 $('#rail').addEventListener('dragend',function(){dragDayId=null;clearDropMarks()});
 $('#rail').addEventListener('dragover',function(e){
   if(!dragDayId)return;
-  var b=e.target.closest('.plate');if(!b||b.getAttribute('data-day')==='all')return;
+  var b=e.target.closest('.plate');if(!b||['all','oggi'].indexOf(b.getAttribute('data-day'))>=0)return;
   e.preventDefault();$$('.dropt').forEach(function(n){n.classList.remove('dropt')});b.classList.add('dropt');
 });
 $('#rail').addEventListener('drop',function(e){
   if(!dragDayId)return;
-  var b=e.target.closest('.plate');if(!b||b.getAttribute('data-day')==='all')return;
+  var b=e.target.closest('.plate');if(!b||['all','oggi'].indexOf(b.getAttribute('data-day'))>=0)return;
   e.preventDefault();var from=dragDayId;dragDayId=null;clearDropMarks();
   moveDayTo(from,b.getAttribute('data-day'));
 });
