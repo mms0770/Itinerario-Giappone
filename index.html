@@ -146,6 +146,8 @@ h1{margin:0;font:700 clamp(32px,7vw,52px)/1.05 var(--display);letter-spacing:.01
 .maptag{position:absolute;left:8px;bottom:6px;font:400 10.5px var(--mono);color:var(--muted);background:color-mix(in srgb,var(--land) 80%,transparent);padding:1px 5px;border-radius:3px;pointer-events:none}
 .pickbar{position:absolute;left:8px;right:8px;top:46px;display:none;gap:10px;align-items:center;justify-content:space-between;background:var(--accent);color:var(--accent-ink);padding:8px 10px;border-radius:5px;font-weight:500;font-size:14px;box-shadow:0 4px 14px rgba(0,0,0,.3)}
 .mapwrap.picking .pickbar{display:flex}
+.mapwrap>*:not(#map){z-index:1000}
+#map{z-index:0}
 .mapwrap.picking #map{cursor:crosshair}
 .pickbar .btn{min-height:30px;padding:2px 10px;background:var(--accent-ink);color:var(--accent);border-color:transparent}
 
@@ -1138,7 +1140,11 @@ $('#geoFind').addEventListener('click',function(){
   var q=($('#f-name').value||'').trim(),res=$('#geoRes');
   if(!q){$('#coordStat').textContent='Scrivi prima il nome del luogo';return}
   res.innerHTML='<p class="help">Cerco…</p>';
-  fetch('https://nominatim.openstreetmap.org/search?format=json&limit=5&accept-language=it&q='+encodeURIComponent(q+' Japan')).then(function(r){return r.json()}).then(function(arr){
+  function nomi(q){return fetch('https://nominatim.openstreetmap.org/search?format=json&limit=5&accept-language=en,it&q='+encodeURIComponent(q)).then(function(r){return r.json()})}
+  nomi(q+' Japan').then(function(arr){
+    if(arr&&arr.length)return arr;
+    return nomi(q);
+  }).then(function(arr){
     if(!arr||!arr.length){res.innerHTML='<p class="help">Nessun risultato: prova il nome in giapponese oppure tocca la mappa.</p>';return}
     res.innerHTML=arr.map(function(p,i){return '<button type="button" class="btn small geo-pick" data-i="'+i+'">'+esc(p.display_name.split(',').slice(0,3).join(','))+'</button>'}).join('');
     res.__items=arr;
