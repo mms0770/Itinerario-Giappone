@@ -562,6 +562,25 @@ function showApp(){
   if('serviceWorker' in navigator){try{navigator.serviceWorker.register('sw.js')}catch(e){}}
   setTimeout(takeShare,50);
 }
+/* Link corti di Google Maps: il servizio risolutore (Apps Script) restituisce coordinate e nome. JSONP, quindi niente CORS. */
+function applyResolved(r){
+  if(!ui.form)return;
+  if(!r||!r.ok){$('#coordStat').textContent='Non ho trovato la posizione: tocca «Cerca il nome» oppure la mappa';$('#coordStat').className='coordstat';return}
+  ui.form.lat=+(+r.lat).toFixed(5);ui.form.lng=+(+r.lng).toFixed(5);
+  $('#f-coord').value=ui.form.lat.toFixed(5)+', '+ui.form.lng.toFixed(5);
+  if(!$('#f-name').value.trim()&&r.name)$('#f-name').value=r.name;
+  updateCoordUI();drawMap();flyTo({lon:ui.form.lng,lat:ui.form.lat,z:16},true);
+}
+function resolveLink(link,done){
+  if(!CFG.resolver){done(null);return}
+  var name='gmr'+Date.now()+Math.floor(Math.random()*1000),s=document.createElement('script'),fired=false;
+  function fin(v){if(fired)return;fired=true;delete window[name];s.remove();done(v)}
+  window[name]=fin;
+  s.onerror=function(){fin(null)};
+  s.src=CFG.resolver+(CFG.resolver.indexOf('?')>0?'&':'?')+'cb='+name+'&u='+encodeURIComponent(link);
+  document.head.appendChild(s);
+  setTimeout(function(){fin(null)},15000);
+}
 /* Condivisione da Google Maps: il link corto non ha le coordinate, quello lungo sì. */
 function mapsCoord(t){
   var s=String(t||''),g=s.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/)||s.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/)||s.match(/[?&]q=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
@@ -585,7 +604,10 @@ function takeShare(){
   if(link)$('#f-note').value='Link Maps: '+link;
   if(coord){ui.form.lat=coord.lat;ui.form.lng=coord.lng;$('#f-coord').value=coord.lat.toFixed(5)+', '+coord.lng.toFixed(5);drawMap();flyTo({lon:coord.lng,lat:coord.lat,z:16},true)}
   updateCoordUI();
-  if(!coord)$('#coordStat').textContent='Nessuna posizione nel link: tocca «Cerca il nome» oppure apri il link e incolla quello lungo';
+  if(!coord){
+    if(/goo\.gl|maps\.app/.test(link)&&CFG.resolver){$('#coordStat').textContent='Cerco la posizione…';resolveLink(link,applyResolved)}
+    else $('#coordStat').textContent='Nessuna posizione nel link: tocca «Cerca il nome» oppure incolla il link lungo';
+  }
 }
 function busy(){return ui.form||ui.editSlot||ui.editTitle||ui.pick}
 function adopt(data,ver){
@@ -1161,7 +1183,7 @@ function placeFromLink(t){var m=String(t||'').match(/\/maps\/place\/([^\/@?]+)/)
 $('#f-coord').addEventListener('input',function(){
   var c=parseCoord(this.value);
   if(c&&!$('#f-name').value.trim()){var nm=placeFromLink(this.value);if(nm){$('#f-name').value=nm}}
-  if(!c&&/goo\.gl|maps\.app/.test(this.value)){$('#coordStat').textContent='Link corto: non contiene le coordinate. Aprilo nel browser e copia il link lungo.';$('#coordStat').className='coordstat'}
+  if(!c&&/goo\.gl|maps\.app/.test(this.value)){$('#coordStat').textContent=CFG.resolver?'Link corto: lo trasformo in coordinate quando esci dal campo':'Link corto: incolla il link lungo oppure usa «Cerca il nome»';$('#coordStat').className='coordstat'}
   if(c){ui.form.lat=c.lat;ui.form.lng=c.lng}else{ui.form.lat=null;ui.form.lng=null}
   updateCoordUI();drawMap();
   if(c)flyTo({lon:c.lng,lat:c.lat,z:16},true);
@@ -1187,6 +1209,10 @@ $('#geoRes').addEventListener('click',function(e){
   $('#f-coord').value=ui.form.lat.toFixed(5)+', '+ui.form.lng.toFixed(5);
   this.innerHTML='';updateCoordUI();drawMap();
   flyTo({lon:ui.form.lng,lat:ui.form.lat,z:16},true);
+});
+$('#f-coord').addEventListener('change',function(){
+  var t=this.value;
+  if(!parseCoord(t)&&/goo\.gl|maps\.app/.test(t)&&CFG.resolver){$('#coordStat').textContent='Cerco la posizione…';resolveLink(t,applyResolved)}
 });
 $('#clearCoord').addEventListener('click',function(){ui.form.lat=null;ui.form.lng=null;$('#f-coord').value='';updateCoordUI();drawMap()});
 $('#pickBtn').addEventListener('click',startPick);

@@ -8,7 +8,9 @@ window.TRIP_CONFIG = {
 
   url: "https://dkqifgsefbyjfmkpimwh.supabase.co",
 
-  key: "sb_publishable_e_iRZzOZ3F5e7PhSjJcpww_wRiwklSK"
+  key: "sb_publishable_e_iRZzOZ3F5e7PhSjJcpww_wRiwklSK",
+  // URL dello script tools/maps-resolver.gs (termina con /exec). Vuoto = niente risoluzione automatica dei link corti.
+  resolver: ""
 
 };
 
