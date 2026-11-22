@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#27478C">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
 <title>Itinerario Giappone</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -556,6 +559,33 @@ function showApp(){
   if(appShown)return;
   appShown=true;$('#app').hidden=false;
   applyHash(false);render();resize();
+  if('serviceWorker' in navigator){try{navigator.serviceWorker.register('sw.js')}catch(e){}}
+  setTimeout(takeShare,50);
+}
+/* Condivisione da Google Maps: il link corto non ha le coordinate, quello lungo sì. */
+function mapsCoord(t){
+  var s=String(t||''),g=s.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/)||s.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/)||s.match(/[?&]q=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
+  if(!g)return null;
+  var a=parseFloat(g[1]),b=parseFloat(g[2]);
+  return (isNaN(a)||isNaN(b)||Math.abs(a)>90||Math.abs(b)>180)?null:{lat:a,lng:b};
+}
+function takeShare(){
+  var q=new URLSearchParams(location.search),title=(q.get('title')||'').trim(),text=(q.get('text')||'').trim(),url=(q.get('url')||'').trim();
+  if(!title&&!text&&!url)return;
+  history.replaceState(null,'',location.pathname+location.hash);
+  if(!state||!state.days.length)return;
+  var link=url||((text.match(/https?:\/\/\S+/)||[''])[0]);
+  var name=title||text.replace(/https?:\/\/\S+/g,'').split('\n')[0].trim();
+  var coord=mapsCoord(link)||mapsCoord(text);
+  var nm=placeFromLink(link);
+  if(!name&&nm)name=nm;
+  var d=getDay('oggi');
+  openForm({mode:'add',dayId:d.id,slotId:d.slots[0].id});
+  $('#f-name').value=name;
+  if(link)$('#f-note').value='Link Maps: '+link;
+  if(coord){ui.form.lat=coord.lat;ui.form.lng=coord.lng;$('#f-coord').value=coord.lat.toFixed(5)+', '+coord.lng.toFixed(5);drawMap();flyTo({lon:coord.lng,lat:coord.lat,z:16},true)}
+  updateCoordUI();
+  if(!coord)$('#coordStat').textContent='Nessuna posizione nel link: tocca «Cerca il nome» oppure apri il link e incolla quello lungo';
 }
 function busy(){return ui.form||ui.editSlot||ui.editTitle||ui.pick}
 function adopt(data,ver){
